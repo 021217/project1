@@ -53,3 +53,23 @@
     @apply border-border outline-ring/50; }
   body {
     @apply bg-background text-foreground; } }
+
+
+    body {
+  font-family: var(--font-tomsnewroman), ui-serif, Georgia, "Times New Roman", serif;
+}
+
+.dashed-custom {
+  border-width: 3px;              /* thickness */
+  border-style: solid;            /* solid, dash is handled by border-image */
+  border-color: transparent;      /* let border-image paint it */
+  border-image: repeating-linear-gradient(
+    45deg,                        /* diagonal → works for all sides */
+    #EB9385 0,
+    #EB9385 10px,                 /* dash length */
+    transparent 10px,
+    transparent 20px              /* gap length */
+  ) 1 round;
+}
+
+
