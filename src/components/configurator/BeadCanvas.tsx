@@ -109,6 +109,7 @@ export default function BeadCanvas() {
     if (!canvas || !ctx) return;
 
     function draw() {
+      if (!canvas || !ctx) return;
       const cssW = canvas.clientWidth || canvas.width / (window.devicePixelRatio || 1);
       const cssH = canvas.clientHeight || canvas.height / (window.devicePixelRatio || 1);
       const cx = cssW / 2;
@@ -221,6 +222,7 @@ export default function BeadCanvas() {
         let tries = 0;
 
         function overlaps(a: number) {
+          if (!bead) return prev;
           return neighborArcs.some((oa) => {
             const diff = Math.abs(oa - a);
             const wrapped = Math.min(diff, C - diff); // shortest arc distance around circle
