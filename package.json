@@ -27,6 +27,8 @@
     "next-auth": "^4.24.11",
     "rbush": "^4.0.1",
     "react": "19.1.0",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.62.0",
     "stripe": "^18.5.0",

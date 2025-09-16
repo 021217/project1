@@ -72,4 +72,11 @@
   ) 1 round;
 }
 
+.rugged-border {
+  border-width: 20px; /* adjust thickness */
+  border-style: solid;
+  border-image-source: url("/borders/rugged.png"); /* your exported PNG or SVG */
+  border-image-slice: 30;  /* tweak depending on how you export */
+  border-image-repeat: stretch; /* or round if patterny */
+}
 
