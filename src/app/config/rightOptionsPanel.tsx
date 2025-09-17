@@ -32,85 +32,207 @@ export type FooterAction =
 type Bead = {
       id: string;
       name: string;
-      material: string;
-      sizeMM: number;
+      material: {
+            category: string;
+            subgroup: string;
+      };
+      size: number[]; // 👈 fixed list of allowed sizes (mm)
       price: number;
-      colorHex: string;
+      image: string;
+      shape: string;
+      color: string;
+      aspirations?: string[];
+      astrology?: string[];
 };
 
+
+
 const sampleBeads: Bead[] = [
-      { id: "b1", name: "Jade Round", material: "Jade", sizeMM: 10, price: 38, colorHex: "#7bb77a" },
-      { id: "b2", name: "Rose Quartz", material: "Quartz", sizeMM: 12, price: 45, colorHex: "#f4b6c2" },
-      { id: "b3", name: "Obsidian", material: "Obsidian", sizeMM: 8, price: 22, colorHex: "#222" },
-      { id: "b4", name: "Tiger's Eye", material: "Quartz", sizeMM: 10, price: 32, colorHex: "#a46a2b" },
-      { id: "b5", name: "Amethyst", material: "Quartz", sizeMM: 10, price: 40, colorHex: "#8a6bbf" },
-      { id: "b6", name: "White Agate", material: "Agate", sizeMM: 12, price: 36, colorHex: "#eaeaea" },
-      { id: "b7", name: "Amber", material: "Amber", sizeMM: 8, price: 28, colorHex: "#f2a65a" },
-      { id: "b8", name: "Pearl (Cultured)", material: "Pearl", sizeMM: 9, price: 55, colorHex: "#f5f5f7" },
+      {
+            "id": "b1",
+            "name": "Amazonite",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Silicate Crystals"
+            },
+            "size": [5, 8, 10, 12],
+            "price": 38,
+            "image": "/beads/amazonite.jpg",
+            "shape": "Spherical",
+            "color": "Blue",
+            "aspirations": ["Health", "Inner Peace", "Creativity"],
+            "astrology": ["Virgo"]
+      },
+
+      {
+            "id": "b2",
+            "name": "Phosphosiderite",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Phosphate & Other Crystals"
+            },
+            "size": [8, 10],
+            "price": 45,
+            "image": "/beads/phosphosiderite.jpg",
+            "shape": "Spherical",
+            "color": "Purple",
+            "aspirations": ["Wisdom", "Inner Peace", "Study"]
+      },
+
+      {
+            "id": "b3",
+            "name": "Nephrite",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Silicate Crystals"
+            },
+            "size": [10],
+            "price": 40,
+            "image": "/beads/nephrite.jpg",
+            "shape": "Spherical",
+            "color": "White",
+            "aspirations": ["Health", "Protection", "Growth"],
+            "astrology": ["Taurus", "Libra"]
+      },
+
+      {
+            "id": "b4",
+            "name": "Kunzite",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Silicate Crystals"
+            },
+            "size": [12],
+            "price": 55,
+            "image": "/beads/kunzite.jpg",
+            "shape": "Spherical",
+            "color": "Pink",
+            "aspirations": ["Relationship", "Inner Peace"],
+            "astrology": ["Taurus", "Leo", "Scorpio"]
+      },
+
+      {
+            "id": "b5",
+            "name": "Obsidian",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Mineraloids"
+            },
+            "size": [8, 10, 12],
+            "price": 32,
+            "image": "/beads/obsidian.jpg",
+            "shape": "Spherical",
+            "color": "Black",
+            "aspirations": ["Protection", "Inner Peace"],
+            "astrology": ["Scorpio", "Sagittarius"]
+      },
+
+      {
+            "id": "b6",
+            "name": "Silver Obsidian",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Mineraloids"
+            },
+            "size": [8, 10, 12],
+            "price": 36,
+            "image": "/beads/silver-obsidian.jpg",
+            "shape": "Spherical",
+            "color": "Black",
+            "aspirations": ["Protection", "Luck", "Inner Peace"],
+            "astrology": ["Scorpio"]
+      },
+
+      {
+            "id": "b7",
+            "name": "Golden Obsidian",
+            "material": {
+                  "category": "Crystals & Mineraloids",
+                  "subgroup": "Mineraloids"
+            },
+            "size": [8, 10, 12],
+            "price": 36,
+            "image": "/beads/golden-obsidian.jpg",
+            "shape": "Spherical",
+            "color": "Black",
+            "aspirations": ["Protection", "Luck", "Career"],
+            "astrology": ["Sagittarius"]
+      }
+
+
+
+
 ];
 
 /* ────────────────────────────────────────────────────────────────────────────
    DraggableBead (from right panel)
    ──────────────────────────────────────────────────────────────────────────── */
 function DraggableBead({ bead, previewOn }: { bead: Bead; previewOn: boolean }) {
-      const [{ isDragging }, drag, dragPreview] = useDrag(() => ({
-            type: "TEMPLATE_BEAD",   // for DnD accept
-            item: {
-                  type: "TEMPLATE_BEAD", // 👈 add this so BeadCanvas drop can read it
-                  id: bead.id,
-                  name: bead.name,
-                  size: bead.sizeMM * 2,
-                  color: bead.colorHex,
-            },
-            collect: (monitor) => ({
-                  isDragging: !!monitor.isDragging(),
-            }),
-      }));
+  const [{ isDragging }, drag, dragPreview] = useDrag(() => ({
+    type: "TEMPLATE_BEAD",
+    item: {
+      type: "TEMPLATE_BEAD",
+      id: bead.id,
+      name: bead.name,
+      size: (bead.size[0] ?? 10) * 2, // default to first available size
+      color: bead.color,
+    },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }));
 
-      useEffect(() => {
-            dragPreview(getEmptyImage(), { captureDraggingState: true });
-      }, [dragPreview]);
+  useEffect(() => {
+    dragPreview(getEmptyImage(), { captureDraggingState: true });
+  }, [dragPreview]);
 
-      return (
-            <div className="flex flex-col items-center gap-2 cursor-grab">
-                  {/* draggable circle */}
-                  <span
-                        ref={drag}
-                        className="relative block"
-                        style={{
-                              width: bead.sizeMM * 2,
-                              height: bead.sizeMM * 2,
-                              borderRadius: "50%",
-                              backgroundColor: bead.colorHex,
-                              border: "1px solid rgba(0,0,0,0.2)",
-                              opacity: isDragging ? 0.4 : 1,
-                        }}
-                        title={previewOn ? `${bead.name} • ${bead.sizeMM}mm • RM${bead.price}` : ""}
-                  />
+  return (
+    <div className="flex flex-col items-center gap-2 cursor-grab select-none">
+      {/* bead image (instead of just color circle) */}
+      <img
+        ref={drag}
+        src={bead.image}
+        alt={bead.name}
+        draggable={false}
+        style={{
+          width: (bead.size[0] ?? 10) * 2,
+          height: (bead.size[0] ?? 10) * 2,
+          borderRadius: "50%",
+          border: "1px solid rgba(0,0,0,0.2)",
+          objectFit: "cover",
+          opacity: isDragging ? 0.4 : 1,
+        }}
+        title={
+          previewOn
+            ? `${bead.name} • ${bead.size.join("/")}mm • RM${bead.price}`
+            : ""
+        }
+      />
 
-                  {/* text info (hidden when preview is off) */}
-                  {previewOn && (
-                        <div className="flex flex-col items-center text-xs text-stone-700 select-none">
-                              <span className="font-medium">{bead.name}</span>
-                              <span>{bead.sizeMM}mm • RM{bead.price}</span>
-                        </div>
-                  )}
-            </div>
-      );
+      {/* labels (hide when previewOff) */}
+      {previewOn && (
+        <div className="flex flex-col items-center text-xs text-stone-700">
+          <span className="font-medium">{bead.name}</span>
+          <span>{bead.size.join("/")}mm • RM{bead.price}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
    BeadsGrid
    ──────────────────────────────────────────────────────────────────────────── */
 function BeadsGrid({ previewOn }: { previewOn: boolean }) {
-      return (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-                  {sampleBeads.map((b) => (
-                        <DraggableBead key={b.id} bead={b} previewOn={previewOn} />
-                  ))}
-            </div>
-      );
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+      {sampleBeads.map((b) => (
+        <DraggableBead key={b.id} bead={b} previewOn={previewOn} />
+      ))}
+    </div>
+  );
 }
+
 
 /* ────────────────────────────────────────────────────────────────────────────
    RightOptionsPanel
@@ -277,7 +399,7 @@ export default function RightOptionsPanel({
                                                 title="Toggle preview"
                                           >
                                                 <img
-                                                      src={previewOn ? "/icons/hide.svg" : "/icons/unhide.svg"}
+                                                      src={previewOn ? "/icons/unhide.svg" : "/icons/hide.svg"}
                                                       alt=""
                                                       className="h-5 w-5"
                                                 />

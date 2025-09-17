@@ -5,9 +5,11 @@ import { useDrop } from "react-dnd";
 
 type Bead = {
   id: string;
-  socketIndex: number; // 👈 instead of raw x/y
-  size: number;
+  socketIndex: number;
+  size: number;     // px diameter
   color: string;
+  name?: string;
+  image?: string;   // 👈 add this
 };
 
 type DragItem =
@@ -17,6 +19,7 @@ type DragItem =
       name: string;
       size: number;
       color: string;
+      image?: string;   // 👈 carry over image
     }
   | {
       type: "PLACED_BEAD";
@@ -24,6 +27,7 @@ type DragItem =
       socketIndex: number;
       size: number;
       color: string;
+      image?: string;
     };
 
 const loadImage = (src: string) =>
@@ -161,13 +165,32 @@ export default function BeadCanvas() {
         const bx = cx + trackRadius * Math.cos(angle);
         const by = cy + trackRadius * Math.sin(angle);
 
-        ctx.beginPath();
-        ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
-        ctx.fillStyle = b.color || "#ff00ff";
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "#000";
-        ctx.stroke();
+        if (b.image) {
+          const img = new Image();
+          img.src = b.image;
+          img.onload = () => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
+            ctx.clip(); // clip into circle
+            ctx.drawImage(img, bx - b.size / 2, by - b.size / 2, b.size, b.size);
+            ctx.restore();
+
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#000";
+            ctx.beginPath();
+            ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
+            ctx.stroke();
+          };
+        } else {
+          ctx.beginPath();
+          ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
+          ctx.fillStyle = b.color || "#ff00ff";
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = "#000";
+          ctx.stroke();
+        }
       });
 
       requestAnimationFrame(draw);
@@ -244,11 +267,12 @@ export default function BeadCanvas() {
       const { angle } = socketPositions[nearest];
       const newBead: Bead = {
         id: "b" + Date.now(),
-        socketIndex: nearest, // keep socket index
+        socketIndex: nearest,
         size: item.size,
         color: item.color,
+        name: item.name,
+        image: item.image,   // 👈 keep the image from drag item
       };
-
       setBeads((prev) => {
         // overwrite bead at this socket if exists
         const filtered = prev.filter((b) => b.socketIndex !== nearest);
