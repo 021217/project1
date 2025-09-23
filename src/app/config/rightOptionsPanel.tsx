@@ -22,7 +22,7 @@ export type HeaderAction =
 
 export type FooterAction =
       | { type: "toggle_preview"; value: boolean }
-      | { type: "open_bin" }
+      | { type: "clear_canvas" }
       | { type: "open_antique_collection" }
       | { type: "open_inspirations" };
 
@@ -167,70 +167,73 @@ const sampleBeads: Bead[] = [
 /* ────────────────────────────────────────────────────────────────────────────
    DraggableBead (from right panel)
    ──────────────────────────────────────────────────────────────────────────── */
-function DraggableBead({ bead, previewOn }: { bead: Bead; previewOn: boolean }) {
-  const [{ isDragging }, drag, dragPreview] = useDrag(() => ({
-    type: "TEMPLATE_BEAD",
-    item: {
-      type: "TEMPLATE_BEAD",
-      id: bead.id,
-      name: bead.name,
-      size: (bead.size[0] ?? 10) * 2, // default to first available size
-      color: bead.color,
-    },
-    collect: (monitor) => ({
-      isDragging: !!monitor.isDragging(),
-    }),
-  }));
+function DraggableBead({ bead, size, previewOn }: { bead: Bead; size: number; previewOn: boolean }) {
+      const BEAD_SCALE = 8;
+      const [{ isDragging }, drag, dragPreview] = useDrag(
+            () => ({
+                  type: "TEMPLATE_BEAD",
+                  item: {
+                        type: "TEMPLATE_BEAD",
+                        id: bead.id,
+                        name: bead.name,
+                        size: size, // 👈 use provided size
+                        color: bead.color,
+                        image: bead.image,
+                  },
+                  collect: (monitor) => ({
+                        isDragging: !!monitor.isDragging(),
+                  }),
+            }),
+            [size]
+      );
 
-  useEffect(() => {
-    dragPreview(getEmptyImage(), { captureDraggingState: true });
-  }, [dragPreview]);
+      useEffect(() => {
+            dragPreview(getEmptyImage(), { captureDraggingState: true });
+      }, [dragPreview]);
 
-  return (
-    <div className="flex flex-col items-center gap-2 cursor-grab select-none">
-      {/* bead image (instead of just color circle) */}
-      <img
-        ref={drag}
-        src={bead.image}
-        alt={bead.name}
-        draggable={false}
-        style={{
-          width: (bead.size[0] ?? 10) * 2,
-          height: (bead.size[0] ?? 10) * 2,
-          borderRadius: "50%",
-          border: "1px solid rgba(0,0,0,0.2)",
-          objectFit: "cover",
-          opacity: isDragging ? 0.4 : 1,
-        }}
-        title={
-          previewOn
-            ? `${bead.name} • ${bead.size.join("/")}mm • RM${bead.price}`
-            : ""
-        }
-      />
+      return (
+            <div className="relative flex flex-col items-center gap-2 cursor-grab select-none">
+                  {/* bead image */}
+                  <img
+                        ref={drag}
+                        src={bead.image}
+                        alt={bead.name}
+                        draggable={false}
+                        style={{
+                              width: size * BEAD_SCALE,
+                              height: size * BEAD_SCALE,
+                              borderRadius: "50%",
+                              border: "1px solid rgba(0,0,0,0.2)",
+                              objectFit: "cover",
+                              opacity: isDragging ? 0.4 : 1,
+                        }}
+                        title={previewOn ? `${bead.name} • ${size}mm • RM${bead.price}` : ""}
+                  />
 
-      {/* labels (hide when previewOff) */}
-      {previewOn && (
-        <div className="flex flex-col items-center text-xs text-stone-700">
-          <span className="font-medium">{bead.name}</span>
-          <span>{bead.size.join("/")}mm • RM{bead.price}</span>
-        </div>
-      )}
-    </div>
-  );
+                  {/* labels */}
+                  {previewOn && (
+                        <div className="flex flex-col items-center text-xs text-stone-700">
+                              <span className="font-medium">{bead.name}</span>
+                              <span>{size}mm • RM{bead.price}</span>
+                        </div>
+                  )}
+            </div>
+      );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
    BeadsGrid
    ──────────────────────────────────────────────────────────────────────────── */
 function BeadsGrid({ previewOn }: { previewOn: boolean }) {
-  return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-      {sampleBeads.map((b) => (
-        <DraggableBead key={b.id} bead={b} previewOn={previewOn} />
-      ))}
-    </div>
-  );
+      return (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                  {sampleBeads.flatMap((b) =>
+                        b.size.map((s) => (
+                              <DraggableBead key={`${b.id}-${s}`} bead={b} size={s} previewOn={previewOn} />
+                        ))
+                  )}
+            </div>
+      );
 }
 
 
@@ -364,9 +367,11 @@ export default function RightOptionsPanel({
                   </div>
 
                   {/* CONTENT */}
-                  <div className="flex-1 overflow-auto p-6">
-                        <div className="mx-auto max-w-[980px] space-y-4">
-                              <BeadsGrid previewOn={previewOn} />
+                  <div className="flex-1 overflow-hidden p-6">
+                        <div className="mx-auto max-w-[980px] space-y-4 h-full">
+                              <div className="h-full overflow-y-auto pr-2">
+                                    <BeadsGrid previewOn={previewOn} />
+                              </div>
                         </div>
                   </div>
 
@@ -380,7 +385,7 @@ export default function RightOptionsPanel({
                                     {/* LEFT: Bin + Eye */}
                                     <div className="flex items-center gap-1">
                                           <button
-                                                onClick={() => onFooter?.({ type: "open_bin" })}
+                                                onClick={() => onFooter?.({ type: "clear_canvas" })}
                                                 className="inline-flex items-center justify-center rounded-full p-2 hover:bg-stone-100 active:scale-[0.98] cursor-pointer"
                                                 aria-label="Open Bin"
                                                 title="Bin"

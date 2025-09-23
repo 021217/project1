@@ -6,29 +6,29 @@ import { useDrop } from "react-dnd";
 type Bead = {
   id: string;
   socketIndex: number;
-  size: number;     // px diameter
+  size: number; // px diameter
   color: string;
   name?: string;
-  image?: string;   // 👈 add this
+  image?: string;
 };
 
 type DragItem =
   | {
-      type: "TEMPLATE_BEAD";
-      id: string;
-      name: string;
-      size: number;
-      color: string;
-      image?: string;   // 👈 carry over image
-    }
+    type: "TEMPLATE_BEAD";
+    id: string;
+    name: string;
+    size: number;
+    color: string;
+    image?: string;
+  }
   | {
-      type: "PLACED_BEAD";
-      id: string;
-      socketIndex: number;
-      size: number;
-      color: string;
-      image?: string;
-    };
+    type: "PLACED_BEAD";
+    id: string;
+    socketIndex: number;
+    size: number;
+    color: string;
+    image?: string;
+  };
 
 const loadImage = (src: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
@@ -38,26 +38,33 @@ const loadImage = (src: string) =>
     img.src = src;
   });
 
-export default function BeadCanvas() {
+export default function BeadCanvas({
+  beads,
+  setBeads,
+}: {
+  beads: Bead[];
+  setBeads: React.Dispatch<React.SetStateAction<Bead[]>>;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const beadImagesRef = useRef<Record<string, HTMLImageElement>>({});
 
-  const assetsRef = useRef<{ bg?: HTMLImageElement; ring?: HTMLImageElement }>({});
+  const assetsRef = useRef<{ bg?: HTMLImageElement; ring?: HTMLImageElement; logo?: HTMLImageElement; }>(
+    {}
+  );
   const [ready, setReady] = useState(false);
 
-  const R = 180;
   const ringThickness = 36;
-  const trackRadius = R - ringThickness / 2;
 
-  const SOCKET_COUNT = 12;
-  const socketPositions = Array.from({ length: SOCKET_COUNT }, (_, i) => {
-    const angle = (i / SOCKET_COUNT) * 2 * Math.PI - Math.PI / 2;
-    return { angle };
-  });
+  // bracelet sizes in mm (S, M, L)
+  const braceletSizes = { S: 55, M: 70, L: 80 };
+  const pxPerMM = 4; // scale factor, adjust visually
+  const [braceletSize, setBraceletSize] = useState<
+    keyof typeof braceletSizes
+  >("M");
 
-  const [beads, setBeads] = useState<Bead[]>([]);
-  const [ghostSocket, setGhostSocket] = useState<number | null>(null);
+  const [_, forceRerender] = useState(0);
 
   // music
   const [musicOn, setMusicOn] = useState(false);
@@ -69,7 +76,7 @@ export default function BeadCanvas() {
       if (next) {
         audio.currentTime = 0;
         audio.muted = false;
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
       } else {
         audio.pause();
         audio.currentTime = 0;
@@ -100,11 +107,12 @@ export default function BeadCanvas() {
   // preload assets
   useEffect(() => {
     (async () => {
-      const [bg, ring] = await Promise.all([
+      const [bg, ring, logo] = await Promise.all([
         loadImage("/wood-bg.png"),
         loadImage("/circle_placeholder.png"),
+        loadImage("/Logo-light.png"),   // 👈 add this
       ]);
-      assetsRef.current = { bg, ring };
+      assetsRef.current = { bg, ring, logo }; // 👈 store logo too
       setReady(true);
     })();
   }, []);
@@ -124,8 +132,11 @@ export default function BeadCanvas() {
       const cx = cssW / 2;
       const cy = cssH / 2;
 
+      const R = (braceletSizes[braceletSize] * pxPerMM) / 2;
+      const trackRadius = R - ringThickness / 2;
+
       ctx.clearRect(0, 0, cssW, cssH);
-      const { bg, ring } = assetsRef.current;
+      const { bg, ring, logo } = assetsRef.current;
 
       if (bg) {
         const scale = Math.max(cssW / bg.width, cssH / bg.height);
@@ -136,154 +147,148 @@ export default function BeadCanvas() {
         ctx.drawImage(bg, dx, dy, dw, dh);
       }
 
+      // draw logo top-left
+      if (assetsRef.current.logo) {
+        const logo = assetsRef.current.logo;
+        const logoW = 120;  // 👈 adjust size
+        const logoH = (logo.height / logo.width) * logoW;
+        ctx.drawImage(logo, 20, 20, logoW, logoH); // 👈 (x=20,y=20) top-left
+      }
+
       if (ring) {
         const d = 2 * R;
         ctx.drawImage(ring, cx - R, cy - R, d, d);
       }
 
-      // draw sockets
-      socketPositions.forEach(({ angle }, i) => {
-        const sx = cx + trackRadius * Math.cos(angle);
-        const sy = cy + trackRadius * Math.sin(angle);
-        ctx.beginPath();
-        ctx.arc(sx, sy, 6, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(100,100,100,0.4)";
-        ctx.stroke();
+      // --- sequential bead placement ---
+      const circumference = Math.PI * braceletSizes[braceletSize] * pxPerMM;
 
-        if (ghostSocket === i) {
-          ctx.beginPath();
-          ctx.arc(sx, sy, 14, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(0,150,255,0.6)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-      });
+      let angle = -Math.PI / 2; // start at top
+      let usedLength = 0;
 
-      // draw placed beads
+      const trackRadiusMM = (braceletSizes[braceletSize] - ringThickness / pxPerMM) / 2;
       beads.forEach((b) => {
-        const { angle } = socketPositions[b.socketIndex];
-        const bx = cx + trackRadius * Math.cos(angle);
-        const by = cy + trackRadius * Math.sin(angle);
+        // convert bead size (mm) → pixels
+        const beadPx = b.size * pxPerMM;
 
-        if (b.image) {
-          const img = new Image();
-          img.src = b.image;
-          img.onload = () => {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
-            ctx.clip(); // clip into circle
-            ctx.drawImage(img, bx - b.size / 2, by - b.size / 2, b.size, b.size);
-            ctx.restore();
+        // Angle subtended by bead (edge-to-edge along circle)
+        const deltaAngle = beadDeltaAngle(b.size, trackRadiusMM);
 
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#000";
-            ctx.beginPath();
-            ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
-            ctx.stroke();
-          };
+        // if (usedLength + arcLength > circumference) return; // skip if too long
+
+        const bx = cx + trackRadius * Math.cos(angle + deltaAngle / 2);
+        const by = cy + trackRadius * Math.sin(angle + deltaAngle / 2);
+
+        const img = b.image ? beadImagesRef.current[b.image] : undefined;
+
+        if (img) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(bx, by, beadPx / 2, 0, Math.PI * 2);
+          ctx.clip();
+
+          // draw bead texture at correct scale
+          ctx.drawImage(img, bx - beadPx / 2, by - beadPx / 2, beadPx, beadPx);
+
+          // soft shading
+          const shadow = ctx.createRadialGradient(
+            bx, by, beadPx * 0.2,
+            bx, by, beadPx / 2
+          );
+          shadow.addColorStop(0, "rgba(0,0,0,0)");
+          shadow.addColorStop(1, "rgba(0,0,0,0.25)");
+          ctx.fillStyle = shadow;
+          ctx.fillRect(bx - beadPx / 2, by - beadPx / 2, beadPx, beadPx);
+
+          ctx.restore();
         } else {
           ctx.beginPath();
-          ctx.arc(bx, by, b.size / 2, 0, Math.PI * 2);
+          ctx.arc(bx, by, beadPx / 2, 0, Math.PI * 2);
           ctx.fillStyle = b.color || "#ff00ff";
           ctx.fill();
           ctx.lineWidth = 2;
           ctx.strokeStyle = "#000";
           ctx.stroke();
         }
+        
+        // usedLength += arcLength;
+        angle += deltaAngle;
       });
+
 
       requestAnimationFrame(draw);
     }
 
     draw();
-  }, [ready, beads, trackRadius, ghostSocket]);
+  }, [ready, beads, braceletSize]);
 
+  // convert bead size (mm diameter) → arc length in mm along circle
+  function beadArcLengthMM(beadMM: number, trackRadiusMM: number) {
+    const angle = 2 * Math.asin((beadMM / 2) / trackRadiusMM); // radians
+    return angle * trackRadiusMM; // arc length
+  }
+  function getMaxQuota(braceletSize: keyof typeof braceletSizes) {
+    // trackRadius in mm, not pixels
+    const trackRadiusMM =
+      (braceletSizes[braceletSize] - ringThickness / pxPerMM) / 2;
+    return 2 * Math.PI * trackRadiusMM; // full circumference arc length
+  }
+  function beadDeltaAngle(beadMM: number, trackRadiusMM: number) {
+    return 2 * Math.asin((beadMM / 2) / trackRadiusMM);
+  }
   // drop handler
   const [, drop] = useDrop(() => ({
     accept: ["TEMPLATE_BEAD", "PLACED_BEAD"],
-    hover: (item: DragItem, monitor) => {
-      const client = monitor.getClientOffset();
-      const bounds = canvasRef.current?.getBoundingClientRect();
-      const canvas = canvasRef.current;
-      if (!client || !bounds || !canvas) return;
+    drop: (item: DragItem) => {
+      const beadMM = item.size; // diameter in mm
+      const trackRadiusMM = (braceletSizes[braceletSize] - ringThickness / pxPerMM) / 2;
 
-      const dpr = window.devicePixelRatio || 1;
-      const cssW = canvas.width / dpr;
-      const cssH = canvas.height / dpr;
-      const cx = cssW / 2;
-      const cy = cssH / 2;
-
-      const x = client.x - bounds.left;
-      const y = client.y - bounds.top;
-
-      // find nearest socket
-      let nearest: number | null = null;
-      let minDist = Infinity;
-      socketPositions.forEach(({ angle }, i) => {
-        const sx = cx + trackRadius * Math.cos(angle);
-        const sy = cy + trackRadius * Math.sin(angle);
-        const dist = Math.hypot(x - sx, y - sy);
-        if (dist < minDist) {
-          minDist = dist;
-          nearest = i;
-        }
-      });
-      setGhostSocket(nearest);
-    },
-    drop: (item: DragItem, monitor) => {
-      const client = monitor.getClientOffset();
-      const bounds = canvasRef.current?.getBoundingClientRect();
-      const canvas = canvasRef.current;
-      if (!client || !bounds || !canvas) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const cssW = canvas.width / dpr;
-      const cssH = canvas.height / dpr;
-      const cx = cssW / 2;
-      const cy = cssH / 2;
-
-      const x = client.x - bounds.left;
-      const y = client.y - bounds.top;
-
-      // recalc nearest socket at drop time
-      let nearest: number | null = null;
-      let minDist = Infinity;
-      socketPositions.forEach(({ angle }, i) => {
-        const sx = cx + trackRadius * Math.cos(angle);
-        const sy = cy + trackRadius * Math.sin(angle);
-        const dist = Math.hypot(x - sx, y - sy);
-        if (dist < minDist) {
-          minDist = dist;
-          nearest = i;
-        }
-      });
-
-      if (nearest === null) {
-        console.warn("[drop] No socket found!");
-        return;
-      }
-
-      const { angle } = socketPositions[nearest];
-      const newBead: Bead = {
-        id: "b" + Date.now(),
-        socketIndex: nearest,
-        size: item.size,
-        color: item.color,
-        name: item.name,
-        image: item.image,   // 👈 keep the image from drag item
-      };
       setBeads((prev) => {
-        // overwrite bead at this socket if exists
-        const filtered = prev.filter((b) => b.socketIndex !== nearest);
-        return [...filtered, newBead];
-      });
+        const usedQuota = prev.reduce(
+          (sum, b) => sum + beadArcLengthMM(b.size, trackRadiusMM),
+          0
+        );
+        const newBeadArc = beadArcLengthMM(beadMM, trackRadiusMM);
+        const maxQuota = getMaxQuota(braceletSize);
 
-      console.log("[drop] Overwrite bead at socket", nearest, newBead);
-      setGhostSocket(null);
-    },
-    end: () => {
-      setGhostSocket(null);
+        const total = usedQuota + newBeadArc;
+        const max = getMaxQuota(braceletSize);
+
+        // allow up to 2mm over quota
+        const tolerance = 1;
+
+        if (total > max + tolerance) {
+          const remaining = Math.max(0, Math.floor(max - usedQuota));
+          alert(
+            `Not enough space! Only ${remaining} mm of arc left in ${braceletSize} bracelet.`
+          );
+          return prev; // ❌ reject
+        }
+
+        console.log(
+          `[Quota] ${braceletSize}: used=${usedQuota.toFixed(2)}mm, new=${newBeadArc.toFixed(
+            2
+          )}mm, max=${max.toFixed(2)}mm`
+        );
+
+        const newBead: Bead = {
+          id: "b" + Date.now(),
+          socketIndex: prev.length,
+          size: beadMM,
+          color: item.color,
+          name: item.name,
+          image: item.image,
+        };
+
+        if (newBead.image && !beadImagesRef.current[newBead.image]) {
+          loadImage(newBead.image).then((img) => {
+            beadImagesRef.current[newBead.image!] = img;
+            forceRerender((n) => n + 1);
+          });
+        }
+
+        return [...prev, newBead];
+      });
     },
     collect: () => ({}),
   }));
@@ -291,12 +296,14 @@ export default function BeadCanvas() {
 
   // ─────────── SAVE / LOAD / SHARE ───────────
   function saveCanvas() {
-    const blob = new Blob([JSON.stringify(beads, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(beads, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bead-canvas.json";   // 👈 user chooses folder when Save As dialog pops
+    a.download = "bead-canvas.json";
     a.click();
 
     URL.revokeObjectURL(url);
@@ -313,10 +320,21 @@ export default function BeadCanvas() {
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const parsed = JSON.parse(reader.result as string);
+          const parsed: Bead[] = JSON.parse(reader.result as string);
+
+          parsed.forEach((b) => {
+            if (b.image && !beadImagesRef.current[b.image]) {
+              loadImage(b.image).then((img) => {
+                beadImagesRef.current[b.image!] = img;
+                forceRerender((n) => n + 1);
+              });
+            }
+          });
+
           setBeads(parsed);
           alert("Canvas loaded from file!");
-        } catch {
+        } catch (err) {
+          console.error(err);
           alert("Error parsing JSON file.");
         }
       };
@@ -331,7 +349,7 @@ export default function BeadCanvas() {
       await navigator.clipboard.writeText(JSON.stringify(beads, null, 2));
       alert("Canvas copied to clipboard!");
     } catch {
-      saveCanvas(); // fallback → just trigger download
+      saveCanvas(); // fallback
       alert("Clipboard not available, file downloaded instead.");
     }
   }
@@ -374,7 +392,22 @@ export default function BeadCanvas() {
         </button>
       </div>
 
-      <canvas ref={canvasRef} className="w-full h-full border rounded-xl" />
+      {/* Bracelet size selector */}
+      <div className="absolute left-3 bottom-3 z-10 flex gap-2">
+        {(["S", "M", "L"] as const).map((sz) => (
+          <button
+            key={sz}
+            onClick={() => setBraceletSize(sz)}
+            className={`px-3 py-1 rounded ${braceletSize === sz ? "bg-pink-500 text-white" : "bg-white/80"
+              }`}
+          >
+            {sz}
+          </button>
+        ))}
+      </div>
+
+      {/* Canvas */}
+      <canvas ref={canvasRef} className="w-full h-full" />
     </div>
   );
 }
