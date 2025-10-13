@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDrop, useDragLayer, useDrag } from "react-dnd";
 import html2canvas from "html2canvas";
-import { getEmptyImage } from "react-dnd-html5-backend";
 
 type Bead = {
   id: string;
@@ -72,6 +71,22 @@ function beadDeltaAngle(beadMM: number, trackRadiusMM: number) {
   return 2 * Math.asin((beadMM / 2) / trackRadiusMM);
 }
 
+function ccwDistance(a: number, b: number) {
+  // counter-clockwise angular distance from a → b
+  a = normalizeAngle(a);
+  b = normalizeAngle(b);
+  return b >= a ? b - a : 2 * Math.PI - (a - b);
+}
+
+function angleBetweenCCW(a: number, b: number, x: number) {
+  // is x within the CCW arc [a, b]?
+  a = normalizeAngle(a);
+  b = normalizeAngle(b);
+  x = normalizeAngle(x);
+  if (a <= b) return x >= a && x <= b;
+  return x >= a || x <= b;
+}
+
 const ringThickness = 36;
 const braceletSizes = { S: 55, M: 70, L: 80 };
 const pxPerMM = 6;
@@ -113,24 +128,14 @@ function ConfirmationModal({
   );
 }
 
-// 👇 drop this in place of your current DraggableBead
+// replace your current DraggableBead in BeadCanvas.tsx
 function DraggableBead({
-  bead,
-  x,
-  y,
-  beadPx,
-}: {
-  bead: Bead;
-  x: number;
-  y: number;
-  beadPx: number;
-}) {
+  bead, x, y, beadPx
+}: { bead: Bead; x:number; y:number; beadPx:number }) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: "PLACED_BEAD",
     item: bead,
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
+    collect: (m) => ({ isDragging: m.isDragging() }),
   }));
 
   return (
@@ -143,11 +148,28 @@ function DraggableBead({
         width: beadPx,
         height: beadPx,
         borderRadius: "50%",
-        background: bead.image ? `url(${bead.image}) center/cover` : bead.color,
+        overflow: "hidden",
+        // 🚫 no background at all when image exists
+        background: bead.image ? "transparent" : bead.color,
         opacity: isDragging ? 0.5 : 1,
         cursor: "grab",
       }}
-    />
+    >
+      {bead.image && (
+        <img
+          src={bead.image}
+          alt=""
+          draggable={false}
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "block",
+            borderRadius: "50%",
+            objectFit: "cover",
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -520,67 +542,105 @@ export default function BeadCanvas({
           return prev;
         }
 
-        // find nearest anchor + dropAngle
-        let anchor: Bead | null = null;
-        let minDiff = Infinity;
-        for (const b of prev) {
-          let diff = Math.abs(cursorAngle - b.angle);
-          if (diff > Math.PI) diff = 2 * Math.PI - diff;
-          if (diff < minDiff) {
-            minDiff = diff;
-            anchor = b;
-          }
-        }
+        // Split waiting vs bracelet (treat undefined as bracelet to be safe)
+        const waiting = prev.filter((b) => b.location === "waiting");
+        const bracelets = prev.filter((b) => b.location !== "waiting");
 
-        let dropAngle = cursorAngle;
-        if (anchor) {
-          const beadDelta = beadDeltaAngle(beadMM, trackRadiusMM) / 2;
-          const anchorDelta = beadDeltaAngle(anchor.size, trackRadiusMM) / 2;
-          const offset = beadDelta + anchorDelta;
+        // If we’re re-dropping an existing placed bead, remove old copy first
+        const cleaned = bracelets.filter((b) => b.id !== (item as any).id);
 
-          const leftAngle = normalizeAngle(anchor.angle - offset);
-          const rightAngle = normalizeAngle(anchor.angle + offset);
-
-          const leftFree = !isOccupied(prev, leftAngle, beadMM, trackRadiusMM);
-          const rightFree = !isOccupied(prev, rightAngle, beadMM, trackRadiusMM);
-
-          if (leftFree && rightFree) {
-            const diff = cursorAngle - anchor.angle;
-            const side =
-              (diff > 0 && diff < Math.PI) || diff < -Math.PI ? "right" : "left";
-            dropAngle = side === "right" ? rightAngle : leftAngle;
-          } else if (leftFree) {
-            dropAngle = leftAngle;
-          } else if (rightFree) {
-            dropAngle = rightAngle;
-          } else {
-            return prev; // no space
-          }
-        }
-
-        return updateOrCreateBead(
-          prev,
-          item,
-          {
-            angle: dropAngle,
-            location: "bracelet",
-            socketIndex: prev.length,
-            position: (item as any).position ?? { angle: 0 },
-          },
-          () => ({
-            id: "b" + Date.now(),
-            socketIndex: prev.length,
+        // No beads yet → just insert as first
+        if (cleaned.length === 0) {
+          const newBead: Bead = {
+            id: (item as any).type === "PLACED_BEAD" ? (item as any).id : "b" + Date.now(),
+            socketIndex: 0,
             size: beadMM,
             color: item.color,
-            name: item.name,
-            image: item.image,
-            angle: dropAngle,
+            name: (item as any).name,
+            image: (item as any).image,
+            angle: -Math.PI / 2, // temp, will be recalculated below
             entryAngle: (item as any).entryAngle ?? -Math.PI / 2,
             exitAngle: (item as any).exitAngle ?? Math.PI / 2,
             location: "bracelet",
             position: (item as any).position ?? { angle: 0 },
-          })
-        ).sort((a, b) => a.angle - b.angle);
+          };
+
+          // Relayout single bead
+          const trackRadiusMM2 =
+            (braceletSizes[braceletSize] - ringThickness / pxPerMM) / 2;
+
+          let start = -Math.PI / 2;
+          const delta = beadDeltaAngle(newBead.size, trackRadiusMM2);
+          const mid = start + delta / 2;
+          newBead.angle = mid;
+
+          return [...waiting, newBead];
+        }
+
+        // Order current bracelet beads by angle
+        const byAngle = cleaned.slice().sort((a, b) => a.angle - b.angle);
+
+        // Find the gap (curr → next) whose CCW arc contains cursorAngle.
+        // If none matches (rare), we’ll default to after the closest bead.
+        let insertPos = -1;
+        for (let i = 0; i < byAngle.length; i++) {
+          const L = byAngle[i];
+          const R = byAngle[(i + 1) % byAngle.length];
+          if (angleBetweenCCW(L.angle, R.angle, cursorAngle)) {
+            insertPos = i + 1; // insert between L and R
+            break;
+          }
+        }
+        if (insertPos < 0) {
+          // fallback: after the nearest bead by angle
+          let best = 0;
+          let bestDiff = Infinity;
+          for (let i = 0; i < byAngle.length; i++) {
+            const d = Math.abs(normalizeAngle(byAngle[i].angle - cursorAngle));
+            const dd = d > Math.PI ? (2 * Math.PI - d) : d;
+            if (dd < bestDiff) { bestDiff = dd; best = i; }
+          }
+          insertPos = best + 1;
+        }
+
+        // Build new ordered list with the new bead inserted
+        const before = byAngle.slice(0, insertPos);
+        const after = byAngle.slice(insertPos);
+
+        const newBead: Bead = {
+          id: (item as any).type === "PLACED_BEAD" ? (item as any).id : "b" + Date.now(),
+          socketIndex: insertPos, // temp; we re-index below
+          size: beadMM,
+          color: item.color,
+          name: (item as any).name,
+          image: (item as any).image,
+          angle: 0, // temp; relayout below
+          entryAngle: (item as any).entryAngle ?? -Math.PI / 2,
+          exitAngle: (item as any).exitAngle ?? Math.PI / 2,
+          location: "bracelet",
+          position: (item as any).position ?? { angle: 0 },
+        };
+
+        const ordered = [...before, newBead, ...after];
+
+        // Re-index socketIndex in this new order
+        for (let i = 0; i < ordered.length; i++) {
+          ordered[i] = { ...ordered[i], socketIndex: i };
+        }
+
+        // Relayout angles so the beads “stick” around the circle
+        const trackR =
+          (braceletSizes[braceletSize] - ringThickness / pxPerMM) / 2;
+        let start = -Math.PI / 2;
+        const relaid = ordered.map((b) => {
+          const delta = beadDeltaAngle(b.size, trackR);
+          const mid = start + delta / 2;
+          start += delta;
+          return { ...b, angle: mid };
+        });
+
+        // Return waiting + relaid bracelet beads
+        return [...waiting, ...relaid];
       });
     },
   }));
@@ -637,19 +697,25 @@ export default function BeadCanvas({
       }
 
       const img = b.image ? beadImagesRef.current[b.image] : undefined;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      // if you don’t support per-bead rotation in exports, omit rotate;
+      // otherwise add: ctx.rotate((b.position?.angle ?? 0));
+
+      ctx.beginPath();
+      ctx.arc(0, 0, beadPx / 2, 0, Math.PI * 2);
+      ctx.clip();
+
       if (img) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, beadPx / 2, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(img, x - beadPx / 2, y - beadPx / 2, beadPx, beadPx);
-        ctx.restore();
+        ctx.drawImage(img, -beadPx / 2, -beadPx / 2, beadPx, beadPx);
       } else {
-        ctx.beginPath();
-        ctx.arc(x, y, beadPx / 2, 0, Math.PI * 2);
         ctx.fillStyle = b.color || "#ff00ff";
-        ctx.fill();
+        ctx.fillRect(-beadPx / 2, -beadPx / 2, beadPx, beadPx);
       }
+
+      ctx.restore();
     }
 
     return exportCanvas.toDataURL("image/png");
@@ -966,39 +1032,42 @@ export default function BeadCanvas({
 
       // draw placed beads
       beads.forEach((b) => {
-      const beadPx = b.size * pxPerMM;
-      let bx: number;
-      let by: number;
+        const beadPx = b.size * pxPerMM;
+        let bx: number;
+        let by: number;
 
-      if (b.location === "waiting") {
-        const slotSize = 50;
-        bx = cx - (waitingWidth / 2) + b.socketIndex * slotSize + slotSize / 2;
-        by = cy + R + 100;
-      } else {
-        // ✅ Correct circular bracelet placement
-        const trackRadius = R - ringThickness / 2;
-        bx = cx + trackRadius * Math.cos(b.angle);
-        by = cy + trackRadius * Math.sin(b.angle);
-      }
+        if (b.location === "waiting") {
+          const slotSize = 50;
+          bx = cx - (waitingWidth / 2) + b.socketIndex * slotSize + slotSize / 2;
+          by = cy + R + 100;
+        } else {
+          const trackRadius = R - ringThickness / 2;
+          bx = cx + trackRadius * Math.cos(b.angle);
+          by = cy + trackRadius * Math.sin(b.angle);
+        }
 
-      const img = b.image ? beadImagesRef.current[b.image] : undefined;
-      if (img) {
+        const img = b.image ? beadImagesRef.current[b.image] : undefined;
         const rotation = b.position?.angle ?? 0;
+
         ctx.save();
         ctx.translate(bx, by);
         ctx.rotate(rotation);
+
         ctx.beginPath();
         ctx.arc(0, 0, beadPx / 2, 0, Math.PI * 2);
         ctx.clip();
-        ctx.drawImage(img, -beadPx / 2, -beadPx / 2, beadPx, beadPx);
-        ctx.restore();
-      } else {
-        ctx.beginPath();
-        ctx.arc(bx, by, beadPx / 2, 0, Math.PI * 2);
-        ctx.fillStyle = b.color || "#ff00ff";
-        ctx.fill();
-      }
-    });
+
+        if (img) {
+          // image only
+          ctx.drawImage(img, -beadPx / 2, -beadPx / 2, beadPx, beadPx);
+        } else {
+          // color-only bead
+          ctx.fillStyle = "rgba(0,0,0,0)";
+          ctx.fillRect(-beadPx / 2, -beadPx / 2, beadPx, beadPx);
+        }
+
+        ctx.restore(); // ✅ only one restore
+      });
 
       requestAnimationFrame(draw);
     }
@@ -1065,9 +1134,7 @@ export default function BeadCanvas({
 
       {/* Custom drag preview */}
       {isDragging && item && clientOffset && (() => {
-        const beadMM = item.size;
-        const beadPx = beadMM * pxPerMM;
-
+        const beadPx = item.size * pxPerMM;
         return (
           <div
             style={{
@@ -1077,16 +1144,21 @@ export default function BeadCanvas({
               width: beadPx,
               height: beadPx,
               pointerEvents: "none",
-              transform: "scale(1)",
-              transition: "transform 0.1s ease-in-out",
               borderRadius: "50%",
-              background: item.image
-                ? `url(${item.image}) center/cover`
-                : item.color,
+              background: item.image ? "none" : item.color,     // 👈 no bg when image
               opacity: 0.9,
               zIndex: 9999,
+              overflow: "hidden",                                // 👈 keep circle mask
             }}
-          />
+          >
+            {item.image && (
+              <img
+                src={item.image}
+                alt=""
+                style={{ width: "100%", height: "100%", borderRadius: "50%", display: "block" }}
+              />
+            )}
+          </div>
         );
       })()}
 
