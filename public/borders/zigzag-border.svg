@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" stroke="#DA5373" stroke-width="2" fill="none">
+  <!-- Top edge -->
+  <path d="M0,4 L6,0 L12,5 L18,2 L24,6 L31,1 L38,4 L44,0 L52,6 L59,2 L66,5 L72,1 L80,6 L87,0 L94,5 L100,2"></path>
+  <!-- Bottom edge -->
+  <path d="M0,96 L6,100 L12,95 L18,98 L24,94 L31,99 L38,96 L44,100 L52,94 L59,98 L66,95 L72,99 L80,94 L87,100 L94,95 L100,98"></path>
+  <!-- Left edge -->
+  <path d="M4,0 L0,7 L5,14 L2,20 L6,27 L1,34 L4,40 L0,47 L6,53 L2,60 L5,67 L1,73 L6,80 L0,87 L4,94 L0,100"></path>
+  <!-- Right edge -->
+  <path d="M96,0 L100,7 L95,14 L98,20 L94,27 L99,34 L96,40 L100,47 L94,53 L98,60 L95,67 L99,73 L94,80 L100,87 L96,94 L100,100"></path>
+</svg>

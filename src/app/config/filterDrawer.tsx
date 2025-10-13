@@ -1,21 +1,49 @@
 "use client";
 
 import { useState } from "react";
-import { FILTER_TABS, MATERIALS, type TreeNode } from "./data/filters";
 import Tree from "@/components/Tree";
 
 interface Props {
   filtersOpen: boolean;
+  initialTab?: "Visual Qualities" | "Role" | "Material"; // 👈 added
 }
 
-export default function FilterDropdown({ filtersOpen }: Props) {
-  // which left tab is active
-  const [activeTab, setActiveTab] = useState<(typeof FILTER_TABS)[number]>("MATERIAL");
+type TreeNode = {
+  id: string;
+  label: string;
+  children?: TreeNode[];
+};
 
-  // open/close nodes set
+// ─── Options Data ──────────────────────────────
+const VISUALS: TreeNode[] = [
+  { id: "hue", label: "Hue" },
+  { id: "size", label: "Size" },
+  { id: "surface", label: "Surface / Pattern" },
+];
+
+const ROLES: TreeNode[] = [
+  { id: "centerpiece", label: "Centerpiece" },
+  { id: "spacer", label: "Spacer" },
+  { id: "accents", label: "Accents" },
+  { id: "closure", label: "Closure" },
+];
+
+const MATERIALS: TreeNode[] = [
+  { id: "crystals", label: "Crystals & Minerals" },
+  { id: "organics", label: "Organics" },
+  { id: "metals", label: "Metals" },
+  { id: "fabric", label: "Fabric & Other" },
+];
+
+const FILTER_TABS = ["Visual Qualities", "Role", "Material"] as const;
+
+// ─── Component ──────────────────────────────
+export default function FilterDropdown({ filtersOpen, initialTab = "Visual Qualities" }: Props) {
+  const [activeTab, setActiveTab] = useState<(typeof FILTER_TABS)[number]>(initialTab);
+
+  // open/close nodes
   const [openSet, setOpenSet] = useState<Set<string>>(new Set());
-
-  // checked nodes set
+  // checked nodes
   const [checkedSet, setCheckedSet] = useState<Set<string>>(new Set());
 
   const toggleOpen = (id: string) =>
@@ -25,37 +53,49 @@ export default function FilterDropdown({ filtersOpen }: Props) {
       return n;
     });
 
-  const toggleCheck = (id: string, withDescendants = true) =>
+  const toggleCheck = (id: string, list: TreeNode[], withDescendants = true) =>
     setCheckedSet((s) => {
       const n = new Set(s);
       if (n.has(id)) {
         n.delete(id);
-        if (withDescendants) uncheckDesc(id, MATERIALS, n);
+        if (withDescendants) uncheckDesc(id, list, n);
       } else {
         n.add(id);
-        if (withDescendants) checkDesc(id, MATERIALS, n);
+        if (withDescendants) checkDesc(id, list, n);
       }
       return n;
     });
 
+  // pick dataset based on tab
+  const currentItems =
+    activeTab === "Visual Qualities"
+      ? VISUALS
+      : activeTab === "Role"
+      ? ROLES
+      : MATERIALS;
+
   return (
     <div
-      className={`w-full border-t border-[#EB9385]/60 bg-white/95 transition-all duration-300 overflow-hidden ${
+      className={`w-full transition-all duration-300 overflow-hidden ${
         filtersOpen ? "max-h-[520px]" : "max-h-0"
       }`}
       aria-hidden={!filtersOpen}
     >
-      <div className="mx-auto max-w-[980px]">
+      <div className="mx-auto my-3 w-[85%] rounded-md border border-[#EB9385]/60 bg-white shadow-md">
+        {/* Grid layout */}
         <div className="grid grid-cols-[160px_1fr]">
           {/* left tabs */}
-          <div className="bg-[#EB9385] text-white">
+          <div className="bg-[#EB9385] text-white rounded-l-md overflow-hidden">
             {FILTER_TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className={`block w-full px-4 py-3 text-left font-serif text-sm tracking-wide cursor-pointer hover:bg-white hover:text-black ${
-                  activeTab === t ? "bg-white text-black" : "text-white"
-                }`}
+                className={`block w-full px-4 py-3 text-left font-serif text-sm tracking-wide cursor-pointer transition-colors
+                  ${
+                    activeTab === t
+                      ? "bg-white text-black"
+                      : "text-white hover:bg-white hover:text-black"
+                  }`}
               >
                 {t}
               </button>
@@ -63,45 +103,41 @@ export default function FilterDropdown({ filtersOpen }: Props) {
           </div>
 
           {/* right tree */}
-          <div className="p-4">
-            {activeTab === "MATERIAL" && (
-              <Tree
-                items={MATERIALS}
-                openSet={openSet}
-                onToggleOpen={toggleOpen}
-                checkedSet={checkedSet}
-                onToggleCheck={toggleCheck}
-              />
-            )}
-
-            
+          <div className="p-4 overflow-y-auto max-h-[400px]">
+            <Tree
+              items={currentItems}
+              openSet={openSet}
+              onToggleOpen={toggleOpen}
+              checkedSet={checkedSet}
+              onToggleCheck={(id) => toggleCheck(id, currentItems)}
+            />
           </div>
         </div>
-        {/* TODO: SHAPE / FUNCTION / COLORS trees here when you have data */}
-            <div className="flex items-center justify-end border-t border-stone-200 bg-[#F7EEE7] px-4 py-3">
-              <button
-                onClick={() => setCheckedSet(new Set())}
-                className="font-medium text-rose-600 underline cursor-pointer hover:scale-[0.98] transition-all"
-              >
-                RESET
-              </button>
-              <span className="mx-2 text-stone-400"></span>
-              <button
-                onClick={() => {
-                  // emit selected ids (replace with your callback)
-                  console.log("APPLY ->", Array.from(checkedSet));
-                }}
-                className="bg-[#EB9385] px-4 py-1 text-white cursor-pointer font-medium hover:bg-rose-600 hover:scale-[0.98] transition-all"
-              >
-                APPLY
-              </button>
-            </div>
+
+        {/* footer actions */}
+        <div className="flex items-center justify-end border-t border-stone-200 bg-[#F7EEE7] px-4 py-3 rounded-b-md">
+          <button
+            onClick={() => setCheckedSet(new Set())}
+            className="font-medium text-rose-600 underline cursor-pointer hover:scale-[0.98] transition-all"
+          >
+            RESET
+          </button>
+          <span className="mx-2 text-stone-400"></span>
+          <button
+            onClick={() => {
+              console.log("APPLY ->", Array.from(checkedSet));
+            }}
+            className="bg-[#EB9385] px-4 py-1 text-white cursor-pointer font-medium hover:bg-rose-600 hover:scale-[0.98] transition-all rounded"
+          >
+            APPLY
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-// helpers to bulk (un)check descendants
+// ─── Helpers ──────────────────────────────
 function findNode(id: string, list: TreeNode[]): TreeNode | null {
   for (const n of list) {
     if (n.id === id) return n;

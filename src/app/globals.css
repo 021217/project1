@@ -80,3 +80,82 @@
   border-image-repeat: stretch; /* or round if patterny */
 }
 
+
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-float:hover {
+  animation-play-state: paused;
+}
+
+/* Zigzag border/shared class */
+.zigzag-border {
+  --edge-size: 5px;   /* control the height of the zigzag border */
+
+  position: relative;
+  overflow: visible;
+}
+
+.zigzag-border::before,
+.zigzag-border::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--edge-size);
+  background-repeat: repeat-x;
+  background-size: var(--edge-size) var(--edge-size);
+}
+
+.zigzag-border::before {
+  top: calc(-1 * var(--edge-size) + 1px); /* adjust to align top */
+  background-image: 
+    linear-gradient(135deg, transparent 75%, #EB9385 75%),
+    linear-gradient(225deg, transparent 75%, #EB9385 75%);
+  background-position: 0 0, var(--edge-size)/2 0;
+}
+
+.zigzag-border::after {
+  bottom: calc(-1 * var(--edge-size) + 1px); /* adjust to align bottom */
+  background-image: 
+    linear-gradient(45deg, transparent 75%, #EB9385 75%),
+    linear-gradient(315deg, transparent 75%, #EB9385 75%);
+  background-position: 0 0, var(--edge-size)/2 0;
+}
+
+.handdrawn-border {
+  border: 5px solid transparent;
+  border-image-source: url('/borders/zigzag-border.svg');
+  border-image-slice: 15;
+  border-image-repeat: round;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(20px); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-fade-out {
+  animation: fade-out 0.3s ease-out;
+}
+
+button{
+  cursor: pointer;
+}
+
